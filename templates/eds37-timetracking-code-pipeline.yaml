@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  Stack:
+    Type: String
+    Default: eds37-timetracking
+
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - qa
+    - prod
+
+  RepoOwner:
+    Type: String
+    Default: BijalPatel95
+
+  RepoName:
+    Type: String
+    Default: eds37-timetracking
+
+  RepoBranch:
+    Type: String
+    Default: master
+
+
+  ComputeType:
+    Type: String
+    Default: BUILD_GENERAL1_SMALL
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+      - BUILD_GENERAL1_LARGE
+    Description: "BUILD_GENERAL1_SMALL: Use up to 3 GB memory and 2 vCPUs for builds. BUILD_GENERAL1_MEDIUM: Use up to 7 GB memory and 4 vCPUs for builds. BUILD_GENERAL1_LARGE: Use up to 15 GB memory and 8 vCPUs for builds."
+
+Resources:
+  # S3 Buckets
+  PipelineArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub '${Stage}-cf-${Stack}-pipeline-artifacts'
+
+  # Pipeline
+  EDS37TimeTrackingCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties: 
+      ArtifactStore: 
+        Location: !Ref PipelineArtifactsBucket
+        Type: S3
+      Name: !Sub '${Stage}-cf-${Stack}-pipeline' 
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      Stages: 
+        - Name: Source
+          Actions:
+            - ActionTypeId: 
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
+              Configuration: 
+                Owner: !Ref RepoOwner
+                Repo: !Ref RepoName
+                PollForSourceChanges: true
+                Branch: !Ref RepoBranch
+                OAuthToken: '{{resolve:ssm:githubtoken:1}}'
+              Name: Source
+              OutputArtifacts: 
+                - Name: !Sub '${Stage}-cf-${Stack}-pipeline-artifacts'
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - ActionTypeId: 
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration: 
+                ProjectName: !Ref EDS37TimeTrackingCodeBuild
+              InputArtifacts:
+                - Name: !Sub '${Stage}-cf-${Stack}-pipeline-artifacts'
+              Name: CodeBuild
+              OutputArtifacts: 
+                - Name: !Sub '${Stage}-cf--${Stack}-output-build-artifacts'
+              RunOrder: 1
+  
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Stage}-cf-${Stack}-pipeline-role'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codepipeline.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${Stage}-cf-${Stack}-codepipeline-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - "s3:GetObject"
+                - "s3:GetObjectVersion"
+                - "s3:GetBucketVersioning"
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - "s3:PutObject"
+              Resource: "*"
+                # - !GetAtt PipelineArtifactsBucket.Arn
+            - Effect: Allow
+              Action:
+                - "codebuild:BatchGetBuilds"
+                - "codebuild:StartBuild"
+              Resource:
+                - !GetAtt EDS37TimeTrackingCodeBuild.Arn
+                
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Stage}-cf-${Stack}-codebuild-role'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub '${Stage}-cf-${Stack}-codebuild-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - "logs:CreateLogGroup"
+                - "logs:CreateLogStream"
+                - "logs:PutLogEvents"
+              Resource:
+                - !Sub 'arn:aws:logs:*:*:log-group:/aws/codebuild/${Stage}-cf-${Stack}-codebuild'
+                - !Sub 'arn:aws:logs:*:*:log-group:/aws/codebuild/${Stage}-cf-${Stack}-codebuild:*'
+            - Effect: Allow
+              Action:
+                - "s3:GetObject"
+                - "s3:GetObjectVersion"
+                - "s3:GetBucketVersioning"
+              Resource:
+                - !Sub 'arn:aws:s3:::${Stage}-cf-${Stack}-pipeline-artifacts'
+                - !Sub 'arn:aws:s3:::${Stage}-cf-${Stack}-pipeline-artifacts/*'
+            - Effect: Allow
+              Action:
+                - "cloudformation:*"
+                - "iam:*"
+                - "s3:*"
+                - "logs:*"
+                - "apigateway:*"
+                - "cloudwatch:*"
+                - "lambda:*"
+              Resource: "*"
+               
+  # Code Build
+  EDS37TimeTrackingCodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Description: EDS37 Time Tracking code build
+      Environment:
+        ComputeType: !Ref ComputeType
+        EnvironmentVariables:
+          - Name: Stage
+            Type: PLAINTEXT
+            Value: !Ref Stage
+        Image: aws/codebuild/standard:2.0
+        Type: LINUX_CONTAINER
+      # LogsConfig: LogsConfig
+      Name: !Sub '${Stage}-cf-${Stack}-codebuild'
+      ServiceRole: !Ref CodeBuildRole
+      Source:
+        Type: CODEPIPELINE

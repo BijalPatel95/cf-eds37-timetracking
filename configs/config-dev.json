@@ -1,0 +1,10 @@
+[
+  {
+    "ParameterKey": "Stack",
+    "ParameterValue": "eds37-timetracking"
+  },
+  {
+    "ParameterKey": "Stage",
+    "ParameterValue": "dev"
+  }
+]

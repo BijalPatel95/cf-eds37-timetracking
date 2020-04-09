@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "Stack",
+    "ParameterValue": "eds37-timetracking"
+  },
+  {
+    "ParameterKey": "Stage",
+    "ParameterValue": "qa"
+  },
+  {
+    "ParameterKey": "BucketName",
+    "ParameterValue": "eds-cf-templates-qa"
+  }
+]
