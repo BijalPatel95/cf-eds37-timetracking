@@ -59,6 +59,9 @@ Resources:
             Resource: '*'
           - Effect: Allow
             Action:
+            - 'ses:SendRawEmail'
+          - Effect: Allow
+            Action:
             - lambda:InvokeFunction
             Resource: '*'
       Path: "/"
