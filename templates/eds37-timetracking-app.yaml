@@ -109,8 +109,8 @@ Resources:
   ScheduledRule: 
     Type: AWS::Events::Rule
     Properties: 
-      Description: "Lambda Scheduled to Trigger at 8am every Monday"
-      ScheduleExpression: cron(0 12 ? * MON *)
+      Description: "Lambda Scheduled to Trigger at 7am every Monday"
+      ScheduleExpression: cron(0 11 ? * MON *)
       State: "ENABLED"
       Targets:
         - Arn: !Sub ${EDS37TimeTrackingLambdaFunction.Arn}
